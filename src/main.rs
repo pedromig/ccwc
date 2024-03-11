@@ -6,7 +6,7 @@ use std::io;
 use std::collections::HashSet;
 use std::fmt::Write;
 
-// TODO: Implement "total" count display when the user supplies multiple input files
+// TODO: Display "total" count display when the user supplies multiple input files
 
 const FMT_DISPLAY_WIDTH: usize = 6;
 
