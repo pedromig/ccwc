@@ -6,11 +6,9 @@ use std::io;
 use std::collections::HashSet;
 use std::fmt::Write;
 
-// TODO: Display "total" count display when the user supplies multiple input files
-
 const FMT_DISPLAY_WIDTH: usize = 6;
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
 enum WcCliOpt {
     CountBytes,
     CountCharacters,
@@ -82,49 +80,46 @@ fn add_input_files(opt: &str, files: &mut Vec<String>) {
     files.extend(contents.split('\0').map(String::from));
 }
 
-fn wc(contents: &String, opts: &Vec<WcCliOpt>) -> (String, (usize, usize, usize, usize, usize)) {
+fn wc_fmt(counts: &Vec<usize>) -> String {
     let mut fmt = String::new();
-    let mut counts = (0, 0, 0, 0, 0);
+    let width = if counts.len() > 1 {
+        FMT_DISPLAY_WIDTH
+    } else {
+        0
+    };
+    for count in counts {
+        write!(fmt, "{:>width$} ", count).expect("Failed to write bytes");
+    }
+    fmt
+}
+
+fn add_option(opt: WcCliOpt, opts: &mut Vec<WcCliOpt>, seen: &mut HashSet<WcCliOpt>) {
+    if !seen.contains(&opt) {
+        seen.insert(opt.clone());
+        opts.push(opt);
+    }
+}
+
+fn wc(contents: &String, opts: &Vec<WcCliOpt>) -> Vec<usize> {
+    let mut counts: Vec<usize> = Vec::new();
 
     for opt in opts.iter() {
         match opt {
-            WcCliOpt::CountBytes => {
-                counts.0 = contents.bytes().len();
-                write!(fmt, "{:>FMT_DISPLAY_WIDTH$}", counts.0)
-                    .expect("Failed to write the number of bytes");
-            }
-            WcCliOpt::CountCharacters => {
-                counts.1 = contents.chars().count();
-                write!(fmt, "{:>FMT_DISPLAY_WIDTH$}", counts.1)
-                    .expect("Failed to write the number of characters");
-            }
-            WcCliOpt::CountLines => {
-                counts.2 = contents.lines().count();
-                write!(fmt, "{:>FMT_DISPLAY_WIDTH$}", counts.2)
-                    .expect("Failed to write the number of lines");
-            }
+            WcCliOpt::CountBytes => counts.push(contents.bytes().len()),
+            WcCliOpt::CountCharacters => counts.push(contents.chars().count()),
+            WcCliOpt::CountLines => counts.push(contents.lines().count()),
             WcCliOpt::MaxLineLength => {
-                let mut mx = 0;
-                for line in contents.lines() {
-                    mx = cmp::max(line.len(), mx);
-                }
-                counts.3 = mx;
-                write!(fmt, "{:>FMT_DISPLAY_WIDTH$}", mx)
-                    .expect("Failed to write the max line length");
+                counts.push(contents.lines().map(|line| line.len()).max().unwrap_or(0))
             }
-            WcCliOpt::CountWords => {
-                let mut words = 0;
-                for line in contents.lines() {
-                    words += line.split_whitespace().count();
-                }
-                counts.4 = words;
-                write!(fmt, "{:>FMT_DISPLAY_WIDTH$}", words)
-                    .expect("Failed to write the number of words");
-            }
+            WcCliOpt::CountWords => counts.push(
+                contents
+                    .lines()
+                    .map(|line| line.split_whitespace().count())
+                    .sum(),
+            ),
         }
-        fmt.push_str(" ");
     }
-    (fmt, counts)
+    counts
 }
 
 fn main() {
@@ -133,62 +128,47 @@ fn main() {
 
     // CLI Options
     let mut read_stdin = false;
-    let mut opts: HashSet<WcCliOpt> = HashSet::new();
+    let mut opts: Vec<WcCliOpt> = Vec::new();
 
     // Parsing
+    let mut seen: HashSet<WcCliOpt> = HashSet::new();
     for arg in env::args().skip(1).into_iter() {
         match arg.as_str() {
-            "-c" | "--bytes" => {
-                opts.insert(WcCliOpt::CountBytes);
-            }
-            "-m" | "--chars" => {
-                opts.insert(WcCliOpt::CountCharacters);
-            }
-            "-l" | "--lines" => {
-                opts.insert(WcCliOpt::CountLines);
-            }
-            "-L" | "--max-line-length" => {
-                opts.insert(WcCliOpt::MaxLineLength);
-            }
-            "-w" | "--words" => {
-                opts.insert(WcCliOpt::CountWords);
-            }
-            "-" => {
-                read_stdin = true;
-            }
-            "--version" => {
-                return version();
-            }
-            "--help" => {
-                return help();
-            }
+            "-c" | "--bytes" => add_option(WcCliOpt::CountBytes, &mut opts, &mut seen),
+            "-m" | "--chars" => add_option(WcCliOpt::CountCharacters, &mut opts, &mut seen),
+            "-l" | "--lines" => add_option(WcCliOpt::CountLines, &mut opts, &mut seen),
+            "-L" | "--max-line-length" => add_option(WcCliOpt::MaxLineLength, &mut opts, &mut seen),
+            "-w" | "--words" => add_option(WcCliOpt::CountWords, &mut opts, &mut seen),
+            "-" => read_stdin = true,
+            "--version" => return version(),
+            "--help" => return help(),
             s if s.starts_with("--files0-from=") => add_input_files(s, &mut files),
-            s if s.starts_with("-") => {
-                return invalid_opt(s);
-            }
+            s if s.starts_with("-") => return invalid_opt(s),
             file => files.push(file.to_string()),
         }
     }
 
     // Default options
-    let opts: Vec<WcCliOpt> = if opts.is_empty() {
-        vec![
+    if opts.is_empty() {
+        opts = vec![
             WcCliOpt::CountLines,
             WcCliOpt::CountWords,
             WcCliOpt::CountBytes,
-        ]
-    } else {
-        opts.into_iter().collect()
-    };
+        ];
+    }
 
     // Implementation
     if read_stdin || files.is_empty() {
         let file = if read_stdin { "-" } else { "" };
         let contents = io::read_to_string(io::stdin()).expect("Unable to read from stdin");
-        let (fmt, _) = wc(&contents, &opts);
-        println!("{}{:>FMT_DISPLAY_WIDTH$}", fmt, file);
+        println!(
+            "{}{:>FMT_DISPLAY_WIDTH$}",
+            wc_fmt(&wc(&contents, &opts)),
+            file
+        );
     }
 
+    let mut total: Vec<usize> = Vec::new();
     for file in files.iter() {
         if let Ok(metadata) = fs::metadata(file) {
             let contents = if metadata.is_file() {
@@ -197,10 +177,22 @@ fn main() {
                 println!("ccwc: {}: Is a directory", file);
                 String::new()
             };
-            let (fmt, _) = wc(&contents, &opts);
-            println!("{}{:>FMT_DISPLAY_WIDTH$}", fmt, file);
+            let counts = wc(&contents, &opts);
+            println!("{}{:>FMT_DISPLAY_WIDTH$}", wc_fmt(&counts), file);
+
+            // Update total count
+            if total.is_empty() {
+                total = counts;
+            } else {
+                total = total.iter().zip(&counts).map(|(&t, &c)| t + c).collect();
+            }
         } else {
             println!("ccwc: {}: No such file or directory", file);
         }
+    }
+
+    // Display total count
+    if files.len() > 1 {
+        println!("{}total", wc_fmt(&total));
     }
 }
