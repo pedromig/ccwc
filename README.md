@@ -40,19 +40,19 @@ Example usage:
 
 ```bash 
 # Count bytes in a file 
-cargo run -- -c file.txt
+ccwc -c file.txt
 
 # Count lines in a file 
-cargo run -- -l file.txt
+ccwc -l file.txt
 
 # Count words in a file 
-cargo run -- -w filetest.txt
+ccwc -w filetest.txt
 
 # Count characters in a file 
-caro run -- -m file.txt
+ccwc -m file.txt
 
 # Default count (bytes, lines, and words) 
-cargo run file.txt
+ccwc file.txt
 
 # Read from standard input 
-cat file.txt | cargo run
+cat file.txt | ccwc 
