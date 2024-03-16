@@ -46,7 +46,7 @@ ccwc -c file.txt
 ccwc -l file.txt
 
 # Count words in a file 
-ccwc -w filetest.txt
+ccwc -w file.txt
 
 # Count characters in a file 
 ccwc -m file.txt
